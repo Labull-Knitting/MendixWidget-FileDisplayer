@@ -28,17 +28,14 @@ export function preview(props: FileDisplayerPreviewProps): ReactElement {
             className="widget-file-viewer-preview"
             style={{
                 ...props.styleObject,
-                filter: normalizedColorTemperature === 0 ? undefined : getColorTemperatureFilter(normalizedColorTemperature)
+                filter:
+                    normalizedColorTemperature === 0 ? undefined : getColorTemperatureFilter(normalizedColorTemperature)
             }}
         >
             {props.file ? (
-                <div className="widget-file-viewer-preview-file">
-                    📄 {props.file}
-                </div>
+                <div className="widget-file-viewer-preview-file">📄 {props.file}</div>
             ) : (
-                <div className="widget-file-viewer-preview-empty">
-                    Select a file
-                </div>
+                <div className="widget-file-viewer-preview-empty">Select a file</div>
             )}
             <div className="widget-file-viewer-preview-temp">Color temperature shift: {normalizedColorTemperature}</div>
         </div>

@@ -1,7 +1,7 @@
 {
   "name": "filedisplayer",
   "widgetName": "FileDisplayer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Displays images and PDFs with native browser capabilities. Office files and other file types can be downloaded.",
   "copyright": "Open Sourced",
   "author": "Ethan Tse",

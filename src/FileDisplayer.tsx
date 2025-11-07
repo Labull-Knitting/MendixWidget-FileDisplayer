@@ -4,6 +4,23 @@ import "./ui/FileDisplayer.css";
 
 type FileType = "image" | "pdf" | "download";
 
+const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
+
+const getFileExtension = (filename: string): string => {
+    return filename.split(".").pop()?.toLowerCase() || "";
+};
+
+const getFileType = (filename: string): FileType => {
+    const ext = getFileExtension(filename);
+    if (imageExtensions.includes(ext)) {
+        return "image";
+    }
+    if (ext === "pdf") {
+        return "pdf";
+    }
+    return "download";
+};
+
 const clampColorTemperature = (value?: number | null): number => {
     if (typeof value !== "number" || Number.isNaN(value)) {
         return 0;
@@ -24,7 +41,12 @@ const getColorTemperatureFilter = (intensity: number): string => {
     return `sepia(${sepia}) saturate(${saturate}) hue-rotate(${hueRotate}deg)`;
 };
 
-export function FileDisplayer({ file, class: className, style, colorTemperature }: FileDisplayerContainerProps): ReactElement {
+export function FileDisplayer({
+    file,
+    class: className,
+    style,
+    colorTemperature
+}: FileDisplayerContainerProps): ReactElement {
     const [fileUrl, setFileUrl] = useState<string | null>(null);
     const [filename, setFilename] = useState<string>("");
     const [error, setError] = useState<string>("");
@@ -34,23 +56,6 @@ export function FileDisplayer({ file, class: className, style, colorTemperature 
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isLoading, setIsLoading] = useState<boolean>(false);
-
-    const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
-
-    const getFileExtension = (filename: string): string => {
-        return filename.split(".").pop()?.toLowerCase() || "";
-    };
-
-    const getFileType = (filename: string): FileType => {
-        const ext = getFileExtension(filename);
-        if (imageExtensions.includes(ext)) {
-            return "image";
-        }
-        if (ext === "pdf") {
-            return "pdf";
-        }
-        return "download";
-    };
 
     useEffect(() => {
         if (!file) {
