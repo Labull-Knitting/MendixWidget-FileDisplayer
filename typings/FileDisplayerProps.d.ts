@@ -4,7 +4,7 @@
  * @author Mendix Widgets Framework Team
  */
 import { CSSProperties } from "react";
-import { DynamicValue, FileValue } from "mendix";
+import { ActionValue, DynamicValue, FileValue } from "mendix";
 
 export interface FileDisplayerContainerProps {
     name: string;
@@ -13,6 +13,12 @@ export interface FileDisplayerContainerProps {
     tabIndex?: number;
     file: DynamicValue<FileValue>;
     colorTemperature: number;
+    saveButtonCaption: string;
+    onSave?: ActionValue;
+    deleteButtonCaption: string;
+    onDelete?: ActionValue;
+    cancelButtonCaption: string;
+    onCancel?: ActionValue;
 }
 
 export interface FileDisplayerPreviewProps {
@@ -28,4 +34,10 @@ export interface FileDisplayerPreviewProps {
     translate: (text: string) => string;
     file: string;
     colorTemperature: number | null;
+    saveButtonCaption: string;
+    onSave: {} | null;
+    deleteButtonCaption: string;
+    onDelete: {} | null;
+    cancelButtonCaption: string;
+    onCancel: {} | null;
 }

@@ -17,5 +17,31 @@
                 <description>Apply a subtle color temperature shift (0-100) to prevent competitors from copying exact color values.</description>
             </property>
         </propertyGroup>
+        <propertyGroup caption="Annotations">
+            <property key="saveButtonCaption" type="string" defaultValue="保存标注" required="false">
+                <caption>Save button caption</caption>
+                <description>Caption displayed for the save button. Leave empty to hide the button.</description>
+            </property>
+            <property key="onSave" type="action">
+                <caption>On save action</caption>
+                <description>Optional action executed after the widget exports annotations. Use this to trigger microflows or commits.</description>
+            </property>
+            <property key="deleteButtonCaption" type="string" defaultValue="删除标注" required="false">
+                <caption>Delete button caption</caption>
+                <description>Caption displayed for the delete button. Leave empty or select Do nothing to hide the button.</description>
+            </property>
+            <property key="onDelete" type="action">
+                <caption>On delete action</caption>
+                <description>Optional action executed after annotations are cleared. Select Do nothing to hide the button.</description>
+            </property>
+            <property key="cancelButtonCaption" type="string" defaultValue="取消" required="false">
+                <caption>Cancel button caption</caption>
+                <description>Caption displayed for the cancel button. Leave empty or select Do nothing to hide the button.</description>
+            </property>
+            <property key="onCancel" type="action">
+                <caption>On cancel action</caption>
+                <description>Optional action executed after annotations are reverted. Select Do nothing to hide the button.</description>
+            </property>
+        </propertyGroup>
     </properties>
 </widget>

@@ -13,12 +13,14 @@ type Point = {
 type PenAnnotation = {
     type: "pen";
     color: string;
+    lineWidth: number;
     points: Point[];
 };
 
 type ArrowAnnotation = {
     type: "arrow";
     color: string;
+    lineWidth: number;
     start: Point;
     end: Point;
 };
@@ -26,6 +28,9 @@ type ArrowAnnotation = {
 type Annotation = PenAnnotation | ArrowAnnotation;
 
 const imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"];
+const DEFAULT_PEN_SIZE = 3;
+const MIN_LINE_WIDTH = 1;
+const MAX_LINE_WIDTH = 30;
 
 const getFileExtension = (filename: string): string => {
     return filename.split(".").pop()?.toLowerCase() || "";
@@ -62,11 +67,48 @@ const getColorTemperatureFilter = (intensity: number): string => {
     return `sepia(${sepia}) saturate(${saturate}) hue-rotate(${hueRotate}deg)`;
 };
 
+const clampLineWidth = (value: unknown): number => {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+        return DEFAULT_PEN_SIZE;
+    }
+    return Math.min(MAX_LINE_WIDTH, Math.max(MIN_LINE_WIDTH, value));
+};
+
+const cloneAnnotation = (annotation: Annotation): Annotation => {
+    if (annotation.type === "pen") {
+        return {
+            type: "pen",
+            color: annotation.color,
+            lineWidth: clampLineWidth(annotation.lineWidth),
+            points: annotation.points.map(point => ({ x: point.x, y: point.y }))
+        };
+    }
+    return {
+        type: "arrow",
+        color: annotation.color,
+        lineWidth: clampLineWidth(annotation.lineWidth),
+        start: { x: annotation.start.x, y: annotation.start.y },
+        end: { x: annotation.end.x, y: annotation.end.y }
+    };
+};
+
+const cloneAnnotations = (list: Annotation[]): Annotation[] => list.map(cloneAnnotation);
+
+const SAVE_EVENT = "FileDisplayerSave";
+const DELETE_EVENT = "FileDisplayerDelete";
+const CANCEL_EVENT = "FileDisplayerCancel";
+
 export function FileDisplayer({
     file,
     class: className,
     style,
-    colorTemperature
+    colorTemperature,
+    saveButtonCaption,
+    onSave,
+    deleteButtonCaption,
+    onDelete,
+    cancelButtonCaption,
+    onCancel
 }: FileDisplayerContainerProps): ReactElement {
     const [fileUrl, setFileUrl] = useState<string | null>(null);
     const [filename, setFilename] = useState<string>("");
@@ -82,12 +124,40 @@ export function FileDisplayer({
     const [annotationColor, setAnnotationColor] = useState<string>("#ff0000");
     const [annotationEnabled, setAnnotationEnabled] = useState<boolean>(false);
     const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-    const [penSize, setPenSize] = useState<number>(3);
+    const [penSize, setPenSize] = useState<number>(DEFAULT_PEN_SIZE);
 
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const currentAnnotationIndexRef = useRef<number | null>(null);
     const isDrawingRef = useRef<boolean>(false);
+    const savedAnnotationsRef = useRef<Annotation[]>([]);
+    const lastSavedImageRef = useRef<string>("");
+
+    const dispatchWidgetEvent = useCallback((eventName: string, detail?: Record<string, unknown>): void => {
+        if (!rootRef.current) {
+            return;
+        }
+        rootRef.current.dispatchEvent(new CustomEvent(eventName, { detail }));
+    }, []);
+
+    const updateOutputs = useCallback(
+        (action: "save" | "delete" | "cancel", base64: string, eventName: string): void => {
+            lastSavedImageRef.current = base64;
+            if (rootRef.current) {
+                rootRef.current.dataset.lastAction = action;
+                rootRef.current.dataset.lastBase64 = base64;
+            }
+            (window as unknown as Record<string, unknown>).__FileDisplayerLastEvent = {
+                widgetName: "FileDisplayer",
+                action,
+                base64,
+                timestamp: Date.now()
+            };
+            dispatchWidgetEvent(eventName, { base64, action });
+        },
+        [dispatchWidgetEvent]
+    );
 
     useEffect(() => {
         if (!file) {
@@ -120,6 +190,8 @@ export function FileDisplayer({
         setIsLoading(true);
         setAnnotations([]);
         setImageDimensions({ width: 0, height: 0 });
+        savedAnnotationsRef.current = [];
+        lastSavedImageRef.current = "";
 
         if (fileType === "image") {
             setFileUrl(uri);
@@ -210,17 +282,20 @@ export function FileDisplayer({
     };
 
     const drawAnnotationsToContext = useCallback(
-        (ctx: CanvasRenderingContext2D, annotationsToDraw: Annotation[]): void => {
-            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        (ctx: CanvasRenderingContext2D, annotationsToDraw: Annotation[], options: { clear?: boolean } = {}): void => {
+            if (options.clear !== false) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            }
             annotationsToDraw.forEach(annotation => {
                 if (annotation.type === "pen") {
                     if (annotation.points.length === 0) {
                         return;
                     }
+                    const strokeWidth = clampLineWidth(annotation.lineWidth);
                     ctx.strokeStyle = annotation.color;
                     ctx.lineJoin = "round";
                     ctx.lineCap = "round";
-                    ctx.lineWidth = penSize;
+                    ctx.lineWidth = strokeWidth;
                     ctx.beginPath();
                     const [firstPoint, ...restPoints] = annotation.points;
                     ctx.moveTo(firstPoint.x, firstPoint.y);
@@ -233,6 +308,7 @@ export function FileDisplayer({
                     ctx.stroke();
                 } else if (annotation.type === "arrow") {
                     const { start, end, color } = annotation;
+                    const baseLineWidth = clampLineWidth(annotation.lineWidth);
                     const dx = end.x - start.x;
                     const dy = end.y - start.y;
                     const length = Math.sqrt(dx * dx + dy * dy);
@@ -245,7 +321,7 @@ export function FileDisplayer({
                     const px = -uy;
                     const py = ux;
 
-                    const sizeMultiplier = Math.max(penSize / 3, 0.4);
+                    const sizeMultiplier = Math.max(baseLineWidth / DEFAULT_PEN_SIZE, 0.4);
                     const baseWidth = Math.min(Math.max(length * 0.08, 4), 8) * sizeMultiplier;
                     const shaftWidth = baseWidth * 1.4;
                     const headLength = Math.min(Math.max(length * 0.28, 14), 28) * sizeMultiplier;
@@ -293,12 +369,12 @@ export function FileDisplayer({
 
                     ctx.strokeStyle = color;
                     ctx.lineJoin = "round";
-                    ctx.lineWidth = 1;
+                    ctx.lineWidth = Math.max(1, baseLineWidth * 0.35);
                     ctx.stroke();
                 }
             });
         },
-        [penSize]
+        []
     );
 
     const refreshCanvas = useCallback((): void => {
@@ -341,6 +417,87 @@ export function FileDisplayer({
         };
     }, []);
 
+    const generateAnnotatedImage = useCallback(
+        (annotationsToExport: Annotation[], options: { warnIfUnavailable?: boolean } = {}): string => {
+            const { warnIfUnavailable = false } = options;
+            if (getFileType(filename) !== "image") {
+                return "";
+            }
+            if (!imageDimensions.width || !imageDimensions.height || !imageRef.current) {
+                if (warnIfUnavailable) {
+                    console.warn("Image not ready, unable to export annotations.");
+                }
+                return "";
+            }
+            if (annotationsToExport.length === 0) {
+                return "";
+            }
+
+            const compositeCanvas = document.createElement("canvas");
+            compositeCanvas.width = imageDimensions.width;
+            compositeCanvas.height = imageDimensions.height;
+            const ctx = compositeCanvas.getContext("2d");
+            if (!ctx) {
+                console.warn("Unable to obtain 2D context for annotated export.");
+                return "";
+            }
+
+            ctx.drawImage(imageRef.current, 0, 0, compositeCanvas.width, compositeCanvas.height);
+            drawAnnotationsToContext(ctx, annotationsToExport, { clear: false });
+
+            try {
+                return compositeCanvas.toDataURL("image/png");
+            } catch (error) {
+                console.warn("Failed to export annotated image", error);
+                return "";
+            }
+        },
+        [drawAnnotationsToContext, filename, imageDimensions]
+    );
+
+    const copyBase64ToClipboard = useCallback((base64: string): void => {
+        if (!base64) {
+            return;
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            navigator.clipboard.writeText(base64).catch(() => {
+                // Ignore clipboard errors (e.g., insecure context or denied permissions)
+            });
+        }
+    }, []);
+
+    const handleSaveAnnotations = useCallback((): void => {
+        const savedCopy = cloneAnnotations(annotations);
+        savedAnnotationsRef.current = savedCopy;
+        const base64 = generateAnnotatedImage(savedCopy, { warnIfUnavailable: true });
+        if (base64) {
+            copyBase64ToClipboard(base64);
+        }
+        updateOutputs("save", base64, SAVE_EVENT);
+        if (onSave && onSave.canExecute) {
+            onSave.execute();
+        }
+    }, [annotations, copyBase64ToClipboard, generateAnnotatedImage, onSave, updateOutputs]);
+
+    const handleDeleteAnnotations = useCallback((): void => {
+        savedAnnotationsRef.current = [];
+        setAnnotations([]);
+        updateOutputs("delete", "", DELETE_EVENT);
+        if (onDelete && onDelete.canExecute) {
+            onDelete.execute();
+        }
+    }, [onDelete, updateOutputs]);
+
+    const handleCancelAnnotations = useCallback((): void => {
+        const restoredAnnotations = cloneAnnotations(savedAnnotationsRef.current);
+        setAnnotations(restoredAnnotations);
+        const base64 = generateAnnotatedImage(restoredAnnotations);
+        updateOutputs("cancel", base64, CANCEL_EVENT);
+        if (onCancel && onCancel.canExecute) {
+            onCancel.execute();
+        }
+    }, [generateAnnotatedImage, onCancel, updateOutputs]);
+
     const handleCanvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
         if (getFileType(filename) !== "image") {
             return;
@@ -357,6 +514,7 @@ export function FileDisplayer({
             const newAnnotation: PenAnnotation = {
                 type: "pen",
                 color: annotationColor,
+                lineWidth: penSize,
                 points: [point]
             };
             setAnnotations(prev => {
@@ -368,6 +526,7 @@ export function FileDisplayer({
             const newAnnotation: ArrowAnnotation = {
                 type: "arrow",
                 color: annotationColor,
+                lineWidth: penSize,
                 start: point,
                 end: point
             };
@@ -477,6 +636,15 @@ export function FileDisplayer({
         const isImage = fileType === "image";
         const isPDF = fileType === "pdf";
         const showControls = isImage || isPDF;
+        const trimmedSaveCaption = (saveButtonCaption ?? "保存标注").trim();
+        const trimmedDeleteCaption = (deleteButtonCaption ?? "删除标注").trim();
+        const trimmedCancelCaption = (cancelButtonCaption ?? "取消").trim();
+        const showSaveButton = isImage && trimmedSaveCaption.length > 0 && !!onSave;
+        const showDeleteButton = isImage && trimmedDeleteCaption.length > 0 && !!onDelete;
+        const showCancelButton = isImage && trimmedCancelCaption.length > 0 && !!onCancel;
+        const saveButtonDisabled = !onSave?.canExecute;
+        const deleteButtonDisabled = !onDelete?.canExecute;
+        const cancelButtonDisabled = !onCancel?.canExecute;
 
         if (!showControls) {
             return (
@@ -553,6 +721,39 @@ export function FileDisplayer({
                             >
                                 ↶
                             </button>
+                            {showSaveButton && (
+                                <button
+                                    className="widget-file-viewer-btn widget-file-viewer-btn-primary"
+                                    onClick={handleSaveAnnotations}
+                                    title="Save annotated image"
+                                    type="button"
+                                    disabled={saveButtonDisabled}
+                                >
+                                    {trimmedSaveCaption}
+                                </button>
+                            )}
+                            {showDeleteButton && (
+                                <button
+                                    className="widget-file-viewer-btn"
+                                    onClick={handleDeleteAnnotations}
+                                    title="Delete annotations"
+                                    type="button"
+                                    disabled={deleteButtonDisabled}
+                                >
+                                    {trimmedDeleteCaption}
+                                </button>
+                            )}
+                            {showCancelButton && (
+                                <button
+                                    className="widget-file-viewer-btn"
+                                    onClick={handleCancelAnnotations}
+                                    title="Cancel annotations"
+                                    type="button"
+                                    disabled={cancelButtonDisabled}
+                                >
+                                    {trimmedCancelCaption}
+                                </button>
+                            )}
                         </div>
                     )}
                     <button className="widget-file-viewer-btn" onClick={handleZoomIn} title="Zoom In" type="button">
@@ -626,7 +827,7 @@ export function FileDisplayer({
     };
 
     return (
-        <div className={`widget-file-viewer ${className}`} style={style}>
+        <div ref={rootRef} className={`widget-file-viewer ${className}`} style={style}>
             {error ? (
                 <div className="widget-file-viewer-error">
                     <p>{error}</p>
